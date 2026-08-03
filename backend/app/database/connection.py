@@ -105,8 +105,13 @@ class SupabaseDBClient:
         """
         db_session_id = self._to_uuid(session_id)
         
-        # Ensure session exists in the DB first before attaching a message to it
-        self.create_chat_session(title=f"Chat session - {session_id}", session_id=session_id)
+        # Ensure session exists in the DB first before attaching a message to it.
+        # If the session is new and this is the user's first query, name the session based on the query.
+        if role == "user":
+            title_preview = content[:40].strip() + ("..." if len(content) > 40 else "")
+            self.create_chat_session(title=title_preview, session_id=session_id)
+        else:
+            self.create_chat_session(title=f"Chat session - {session_id}", session_id=session_id)
 
         if not self.client:
             logger.warning("Supabase client not initialized. Message bypass database save.")

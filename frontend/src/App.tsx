@@ -206,10 +206,10 @@ export default function App() {
 
     setMessages(prev => [...prev, userMessage]);
 
-    // If it's a new chat, temporarily activate the session locally
-    if (!activeSessionId) {
-      setActiveSessionId(targetSessionId);
-    }
+    // If it's a new chat, do not activate the session immediately.
+    // Setting activeSessionId here would trigger the fetchMessages useEffect before the server has saved
+    // the first message, clearing the user message from the UI state.
+    // Instead, we activate it below once the chat request successfully completes.
 
     // Set up step animations
     setLoaderStep('searching');
@@ -241,7 +241,14 @@ export default function App() {
           model_used: provider,
           retrieved_sources: data.retrieved_sources
         };
-        setMessages(prev => [...prev, assistantMessage]);
+
+        if (!activeSessionId) {
+          // Setting the active session ID will trigger the fetchMessages useEffect,
+          // which will retrieve the entire history (user query + assistant response) from the DB.
+          setActiveSessionId(targetSessionId);
+        } else {
+          setMessages(prev => [...prev, assistantMessage]);
+        }
 
         // Refresh sessions sidebar list
         fetchSessions();
