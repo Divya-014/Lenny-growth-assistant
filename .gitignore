@@ -1,0 +1,36 @@
+# Python virtual environments
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+
+# Environment files
+backend/.env
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Python caches and compiled files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache/
+
+# OS/Editor specific
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db
+
+# Frontend dependency & build output (fallback)
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# Local databases and downloaded transcripts data
+backend/data/
+data/chromadb/*
+!data/chromadb/.gitkeep
