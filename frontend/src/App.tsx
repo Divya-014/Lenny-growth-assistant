@@ -59,16 +59,28 @@ export default function App() {
   // Fetch all chat sessions on mount
   useEffect(() => {
     fetchSessions();
+    const initialSessionId = generateUUID();
+    console.log("[DEBUG] Initializing app, pre-generating session_id:", initialSessionId);
+    setActiveSessionId(initialSessionId);
   }, []);
 
   // Fetch messages when active session changes
   useEffect(() => {
     if (activeSessionId) {
-      fetchMessages(activeSessionId);
+      const isPersisted = sessions.some(s => s.id === activeSessionId);
+      if (isPersisted) {
+        console.log("[DEBUG] Fetching messages for persisted session:", activeSessionId);
+        fetchMessages(activeSessionId);
+      } else {
+        console.log("[DEBUG] Unpersisted session detected. Not fetching:", activeSessionId);
+        setMessages([]);
+        setActiveArtifact(null);
+      }
     } else {
       setMessages([]);
       setActiveArtifact(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId]);
 
   // Scroll to bottom on new messages
@@ -182,8 +194,12 @@ export default function App() {
     return null;
   };
 
-  const generateSessionId = () => {
-    return 'session_' + Math.random().toString(36).substr(2, 9);
+  const generateUUID = () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0,
+            v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -192,12 +208,14 @@ export default function App() {
 
     const queryText = inputText;
     setInputText('');
+    
+    console.log("[DEBUG] loading state changes: true");
     setLoading(true);
 
-    // Resolve active session ID, or create one deterministically
-    const targetSessionId = activeSessionId || generateSessionId();
+    const targetSessionId = activeSessionId || generateUUID();
+    console.log("[DEBUG] Sending message. session_id:", targetSessionId);
+    console.log("[DEBUG] messages length before send:", messages.length);
 
-    // Create user message model locally to append to UI immediately
     const userMessage: Message = {
       id: 'msg_' + Math.random().toString(36).substr(2, 9),
       role: 'user',
@@ -205,11 +223,6 @@ export default function App() {
     };
 
     setMessages(prev => [...prev, userMessage]);
-
-    // If it's a new chat, do not activate the session immediately.
-    // Setting activeSessionId here would trigger the fetchMessages useEffect before the server has saved
-    // the first message, clearing the user message from the UI state.
-    // Instead, we activate it below once the chat request successfully completes.
 
     // Set up step animations
     setLoaderStep('searching');
@@ -231,9 +244,12 @@ export default function App() {
         })
       });
 
+      console.log("[DEBUG] API response received status:", response.status);
+
       if (response.ok) {
         const data = await response.json();
-        // Append LLM response to messages
+        console.log("[DEBUG] API response received payload:", data);
+
         const assistantMessage: Message = {
           id: 'msg_' + Math.random().toString(36).substr(2, 9),
           role: 'assistant',
@@ -242,45 +258,60 @@ export default function App() {
           retrieved_sources: data.retrieved_sources
         };
 
-        if (!activeSessionId) {
-          // Setting the active session ID will trigger the fetchMessages useEffect,
-          // which will retrieve the entire history (user query + assistant response) from the DB.
+        setMessages(prev => {
+          const updated = [...prev, assistantMessage];
+          console.log("[DEBUG] messages length after response:", updated.length);
+          return updated;
+        });
+
+        if (activeSessionId !== targetSessionId) {
+          console.log("[DEBUG] Registering new active session:", targetSessionId);
           setActiveSessionId(targetSessionId);
-        } else {
-          setMessages(prev => [...prev, assistantMessage]);
         }
 
         // Refresh sessions sidebar list
         fetchSessions();
       } else {
         const errData = await response.json().catch(() => ({}));
+        console.error("[DEBUG] API response error:", errData);
+
         const errorMsg: Message = {
           id: 'msg_err_' + Date.now(),
           role: 'assistant',
           content: `⚠️ Failed to get response: ${errData.detail || 'Server error'}`
         };
-        setMessages(prev => [...prev, errorMsg]);
+        setMessages(prev => {
+          const updated = [...prev, errorMsg];
+          console.log("[DEBUG] messages length after response (error):", updated.length);
+          return updated;
+        });
       }
     } catch (e) {
-      console.error('Error sending message:', e);
+      console.error("[DEBUG] Network error during send message:", e);
       const networkErrorMsg: Message = {
         id: 'msg_err_' + Date.now(),
         role: 'assistant',
         content: `⚠️ Network error: Could not reach the backend. Make sure the FastAPI server is running.`
       };
-      setMessages(prev => [...prev, networkErrorMsg]);
+      setMessages(prev => {
+        const updated = [...prev, networkErrorMsg];
+        console.log("[DEBUG] messages length after response (network error):", updated.length);
+        return updated;
+      });
     } finally {
       if (loaderTimerRef.current) {
         window.clearTimeout(loaderTimerRef.current);
         loaderTimerRef.current = null;
       }
       setLoading(false);
+      console.log("[DEBUG] loading state changes: false");
     }
-
   };
 
   const startNewChat = () => {
-    setActiveSessionId(null);
+    const newUUID = generateUUID();
+    console.log("[DEBUG] Explicitly clicked New Chat. Pre-generating session_id:", newUUID);
+    setActiveSessionId(newUUID);
     setMessages([]);
     setActiveArtifact(null);
   };
@@ -382,7 +413,7 @@ export default function App() {
             <div className="flex items-center gap-3">
               <BookOpen className="w-4 h-4 text-emerald-400" />
               <h1 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">
-                {activeSessionId ? 'Active Workspace' : 'New Session'}
+                {messages.length > 0 ? 'Active Workspace' : 'New Session'}
               </h1>
             </div>
             
